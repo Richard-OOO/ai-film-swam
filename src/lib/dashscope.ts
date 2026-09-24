@@ -69,20 +69,46 @@ function parseJsonOutput<T>(value: string): T {
 }
 
 async function chatJson<T>(system: string, user: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${CHAT_API_ROOT}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${evoMapApiKey()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: CHAT_MODEL,
-      messages: [{ role: "system", content: system }, { role: "user", content: user }],
-    }),
-    cache: "no-store",
-    signal,
-  });
-  const data = (await readResponse(response, "EvoMap")) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("The language model returned no structured output.");
-  return parseJsonOutput<T>(content);
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const response = await fetch(`${CHAT_API_ROOT}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${evoMapApiKey()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: CHAT_MODEL,
+        messages: [
+          { role: "system", content: attempt === 1 ? system : `${system}\n上一次没有产生最终 JSON。请停止解释，立即在 content 中输出完整 JSON。` },
+          { role: "user", content: user },
+        ],
+        max_tokens: 8192,
+      }),
+      cache: "no-store",
+      signal,
+    });
+    const data = (await readResponse(response, "EvoMap")) as {
+      choices?: Array<{
+        finish_reason?: string;
+        message?: { content?: string | Array<{ type?: string; text?: string }>; reasoning_content?: string };
+      }>;
+    };
+    const choice = data.choices?.[0];
+    const rawContent = choice?.message?.content;
+    const content = typeof rawContent === "string"
+      ? rawContent
+      : rawContent?.map((part) => part.text || "").join("");
+    if (!content?.trim()) {
+      const reason = choice?.finish_reason || "unknown";
+      const reasoningLength = choice?.message?.reasoning_content?.length || 0;
+      lastError = new Error(`模型未返回最终 JSON（finish_reason: ${reason}, reasoning: ${reasoningLength} 字）。`);
+      continue;
+    }
+    try {
+      return parseJsonOutput<T>(content);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("模型返回的 JSON 无法解析。");
+    }
+  }
+  throw lastError || new Error("模型连续两次未返回结构化结果。");
 }
 
 export async function planShots(
