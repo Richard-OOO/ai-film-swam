@@ -229,5 +229,5 @@ export type VideoGenerationResponse = {
   status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED";
   videoUrl?: string;
   error?: string;
-  provider: "tokenworld";
+  provider: "tokenworld" | "seetacloud";
 };

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { FrameStrategy } from "@/lib/domain";
-import { createVideo } from "@/lib/tokenworld";
+import { createSeetaVideo } from "@/lib/seetacloud";
 
 export const maxDuration = 30;
 
@@ -20,9 +20,10 @@ export async function POST(request: Request) {
     if (body.frameStrategy === "CONTINUOUS_KEYFRAMES" && !body.endFrameUrl) {
       return NextResponse.json({ error: "Continuous shots require both keyframes before video generation." }, { status: 400 });
     }
-    return NextResponse.json(await createVideo({
+    return NextResponse.json(await createSeetaVideo({
       prompt: body.prompt.trim(),
-      imageUrl: body.startFrameUrl,
+      startFrameUrl: body.startFrameUrl,
+      endFrameUrl: body.frameStrategy === "CONTINUOUS_KEYFRAMES" ? body.endFrameUrl : undefined,
       duration: body.duration,
     }), { status: 202 });
   } catch (error) {

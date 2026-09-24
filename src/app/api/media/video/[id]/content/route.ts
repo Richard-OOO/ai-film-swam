@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getVideoContent } from "@/lib/tokenworld";
+import { getSeetaVideoContent } from "@/lib/seetacloud";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
-    const upstream = await getVideoContent(id);
+    const upstream = await getSeetaVideoContent(id);
     return new Response(upstream.body, {
       status: upstream.status,
       headers: {
