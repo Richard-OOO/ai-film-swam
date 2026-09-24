@@ -31,6 +31,43 @@ function stripJsonFence(value: string) {
   return value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
 }
 
+function parseJsonOutput<T>(value: string): T {
+  const content = stripJsonFence(value);
+  try {
+    return JSON.parse(content) as T;
+  } catch (originalError) {
+    for (let start = 0; start < content.length; start += 1) {
+      if (content[start] !== "{" && content[start] !== "[") continue;
+      const stack: string[] = [];
+      let inString = false;
+      let escaped = false;
+      for (let end = start; end < content.length; end += 1) {
+        const character = content[end];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (character === "\\") escaped = true;
+          else if (character === '"') inString = false;
+          continue;
+        }
+        if (character === '"') { inString = true; continue; }
+        if (character === "{" || character === "[") stack.push(character);
+        else if (character === "}" || character === "]") {
+          const opening = stack.pop();
+          if ((character === "}" && opening !== "{") || (character === "]" && opening !== "[")) break;
+          if (stack.length === 0) {
+            try {
+              return JSON.parse(content.slice(start, end + 1)) as T;
+            } catch {
+              break;
+            }
+          }
+        }
+      }
+    }
+    throw originalError;
+  }
+}
+
 async function chatJson<T>(system: string, user: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${CHAT_API_ROOT}/chat/completions`, {
     method: "POST",
@@ -45,7 +82,7 @@ async function chatJson<T>(system: string, user: string, signal?: AbortSignal): 
   const data = (await readResponse(response, "EvoMap")) as { choices?: Array<{ message?: { content?: string } }> };
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("The language model returned no structured output.");
-  return JSON.parse(stripJsonFence(content)) as T;
+  return parseJsonOutput<T>(content);
 }
 
 export async function planShots(
